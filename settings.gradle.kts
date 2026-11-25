@@ -8,7 +8,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        if (System.getenv("SKIP_ANDROID") == null) google()
+        google()
         mavenCentral()
     }
 }
