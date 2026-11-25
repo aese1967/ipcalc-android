@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK y EXE
 
 on:
   push:
@@ -11,43 +11,92 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+      - name: Pruebas
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
 
-      - name: Build APKs
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+      - name: Compilar APK
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
 
-      - name: Rename APKs
+      - name: Preparar APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk out/IPCalcRed-debug.apk
           cp app/build/outputs/apk/release/app-release.apk out/IPCalcRed.apk
+          cp app/build/outputs/apk/debug/app-debug.apk out/IPCalcRed-debug.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: IPCalcRed-apk
+          name: android
           path: out/*.apk
 
-      # Publica el APK en la página "Releases" del repositorio en cada push a main
-      - name: Publish latest release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  windows:
+    runs-on: windows-latest
+    env:
+      SKIP_ANDROID: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Pruebas
+        run: ./gradlew --no-daemon :desktop:test
+
+      - name: Compilar instalador y versión portable
+        run: ./gradlew --no-daemon :desktop:packageExe :desktop:packageMsi :desktop:createDistributable
+
+      - name: Preparar EXE
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item desktop/build/compose/binaries/main/exe/*.exe out/IPCalcRed-Setup.exe
+          Copy-Item desktop/build/compose/binaries/main/msi/*.msi out/IPCalcRed.msi
+          Compress-Archive -Path desktop/build/compose/binaries/main/app/IPCalcRed -DestinationPath out/IPCalcRed-portable-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publicar en Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: IPCalcRed (última versión)
-          prerelease: true
+          name: IPCalc Red (última versión)
+          prerelease: false
           make_latest: true
-          body: "APK compilado automáticamente desde ${{ github.sha }}. Descarga IPCalcRed.apk e instálalo en el móvil."
-          files: out/IPCalcRed.apk
+          body: |
+            Compilado automáticamente desde ${{ github.sha }}.
+
+            - **IPCalcRed.apk**: app Android (instalar en el móvil).
+            - **IPCalcRed-Setup.exe**: instalador para Windows.
+            - **IPCalcRed-portable-windows.zip**: versión portable, descomprimir y ejecutar IPCalcRed.exe.
+            - **IPCalcRed.msi**: instalador MSI alternativo.
+          files: |
+            dist/IPCalcRed.apk
+            dist/IPCalcRed-Setup.exe
+            dist/IPCalcRed.msi
+            dist/IPCalcRed-portable-windows.zip

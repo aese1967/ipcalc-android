@@ -26,11 +26,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aese.ipcalc.scan.Discovery
-import com.aese.ipcalc.scan.NetworkViewModel
+import com.aese.ipcalc.scan.NetworkController
 import com.aese.ipcalc.scan.Services
 
 @Composable
-fun ToolsScreen(vm: NetworkViewModel, presetHost: String?, onPresetConsumed: () -> Unit) {
+fun ToolsScreen(vm: NetworkController, presetHost: String?, onPresetConsumed: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf(0) }
     var host by rememberSaveable { mutableStateOf("192.168.1.1") }
     LaunchedEffect(presetHost) {
@@ -62,7 +62,7 @@ fun ToolsScreen(vm: NetworkViewModel, presetHost: String?, onPresetConsumed: () 
 }
 
 @Composable
-private fun PortTool(vm: NetworkViewModel, host: String, onHost: (String) -> Unit) {
+private fun PortTool(vm: NetworkController, host: String, onHost: (String) -> Unit) {
     var preset by rememberSaveable { mutableStateOf(0) }
     var custom by rememberSaveable { mutableStateOf("1-1024") }
     var timeout by rememberSaveable { mutableStateOf("600") }
@@ -104,7 +104,7 @@ private fun PortTool(vm: NetworkViewModel, host: String, onHost: (String) -> Uni
 }
 
 @Composable
-private fun PingTool(vm: NetworkViewModel, host: String, onHost: (String) -> Unit) {
+private fun PingTool(vm: NetworkController, host: String, onHost: (String) -> Unit) {
     var count by rememberSaveable { mutableStateOf("4") }
     InputField(host, onHost, "Host o IP")
     InputField(count, { count = it.filter(Char::isDigit).take(3) }, "Número de paquetes", numeric = true)
@@ -123,7 +123,7 @@ private fun PingTool(vm: NetworkViewModel, host: String, onHost: (String) -> Uni
 }
 
 @Composable
-private fun DefaultIpsTool(vm: NetworkViewModel, onPick: (String) -> Unit) {
+private fun DefaultIpsTool(vm: NetworkController, onPick: (String) -> Unit) {
     var timeout by rememberSaveable { mutableStateOf("800") }
     Hint(
         "Prueba direcciones de fábrica típicas de routers, cámaras y equipos. Si el equipo está en otra red, " +

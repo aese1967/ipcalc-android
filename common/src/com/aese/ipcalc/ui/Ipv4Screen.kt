@@ -117,6 +117,8 @@ private fun BinaryCard(n: Ipv4Network) {
 @Composable
 private fun BinaryLine(bin: String, prefix: Int) {
     // bin = "xxxxxxxx.xxxxxxxx.xxxxxxxx.xxxxxxxx"
+    val netColor = MaterialTheme.colorScheme.primary
+    val hostColor = MaterialTheme.colorScheme.onSurface
     val text = androidx.compose.ui.text.buildAnnotatedString {
         var bit = 0
         for (c in bin) {
@@ -128,7 +130,7 @@ private fun BinaryLine(bin: String, prefix: Int) {
             pushStyle(
                 androidx.compose.ui.text.SpanStyle(
                     fontWeight = if (isNet) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isNet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    color = if (isNet) netColor else hostColor,
                 )
             )
             append(c)

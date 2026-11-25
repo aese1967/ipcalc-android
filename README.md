@@ -1,6 +1,13 @@
 # IPCalc Red
 
-App Android (Kotlin + Jetpack Compose) para cálculo de direcciones IP y escaneo de red local.
+App para **Android** y **Windows** (Kotlin + Compose) para cálculo de direcciones IP y escaneo de red local.
+Las dos versiones comparten el mismo código (carpeta `common/`).
+
+| Carpeta | Contenido |
+|---|---|
+| `common/` | Lógica de cálculo, escáner y pantallas (compartido) |
+| `app/` | Arranque y red específicos de Android |
+| `desktop/` | Arranque y red para Windows (Compose Desktop) |
 
 ## Funciones
 
@@ -39,21 +46,36 @@ Con el equipo conectado a la misma Wi-Fi o switch:
 2. **IPs por defecto** en Herramientas.
 3. Poner una **IP estática** en el móvil dentro del rango sospechado (Ajustes › Wi-Fi › red › Configuración IP › Estática) y escanear.
 
+## Versión Windows
+
+Mismas pantallas que en Android. En el PC además:
+- El barrido usa ICMP real (sin ser administrador) y lee la tabla ARP con `arp -a`, así aparecen con su MAC también los equipos que bloquean el ping.
+- Elige automáticamente la tarjeta de red de la ruta por defecto (ignora adaptadores virtuales) para el multicast.
+- Si Windows pregunta por el Firewall al escanear, pulsa **Permitir** (redes privadas) para recibir las respuestas mDNS/UPnP/NetBIOS.
+
 ## Compilar
 
-El APK se compila automáticamente con GitHub Actions en cada push a `main` y se publica en **Releases › latest** (`IPCalcRed.apk`).
-También queda como artefacto en la pestaña **Actions**.
+GitHub Actions compila todo en cada push a `main` y lo publica en **Releases › latest**:
+- `IPCalcRed.apk` (Android)
+- `IPCalcRed-Setup.exe` (instalador Windows) y `IPCalcRed.msi`
+- `IPCalcRed-portable-windows.zip` (descomprimir y ejecutar `IPCalcRed.exe`, no necesita instalar Java)
+
+También quedan como artefactos en la pestaña **Actions**.
 
 En local (Android Studio o línea de comandos con el SDK de Android instalado):
 
 ```bash
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # pruebas de la lógica de cálculo
+
+# Solo Windows/escritorio (no necesita el SDK de Android)
+SKIP_ANDROID=1 ./gradlew :desktop:run
+SKIP_ANDROID=1 ./gradlew :desktop:packageExe   # desde Windows
 ```
 
 Requisitos: JDK 17+, Android SDK 35. Android mínimo: 8.0 (API 26).
 
-El APK release va firmado con la clave de depuración salvo que se configuren los secretos `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` y `KEY_PASSWORD`.
+El APK va firmado con una clave fija de uso personal (`app/signing/ipcalc.jks`) para que cada versión nueva se instale encima de la anterior. Mantén el repositorio privado.
 Para instalarlo, permite "instalar apps de origen desconocido" en el móvil.
 
 > Usa el escáner solo en redes propias o con autorización.

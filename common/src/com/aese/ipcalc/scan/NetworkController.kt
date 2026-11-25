@@ -1,19 +1,15 @@
 package com.aese.ipcalc.scan
 
-import android.app.Application
-import android.content.Context
-import android.net.wifi.WifiManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import com.aese.ipcalc.core.Ipv4
 import com.aese.ipcalc.core.Ipv4Network
 import com.aese.ipcalc.core.Ipv4Parser
 import com.aese.ipcalc.core.ParseResult
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -24,7 +20,11 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
-class NetworkViewModel(app: Application) : AndroidViewModel(app) {
+/**
+ * Estado y acciones del escáner, compartido entre Android y escritorio.
+ * [scope] debe ejecutarse en el hilo principal de la UI.
+ */
+class NetworkController(private val platform: Platform, private val viewModelScope: CoroutineScope) {
 
     // ---------- red local ----------
     var local by mutableStateOf<LocalNetwork?>(null)
@@ -32,7 +32,7 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshLocal() {
         local = try {
-            NetInfo.read(getApplication())
+            platform.readLocal()
         } catch (e: Exception) {
             null
         }
@@ -81,7 +81,7 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
         scanRunning = true
         scanProgress = 0f
         scanJob = viewModelScope.launch {
-            val lock = acquireMulticastLock()
+            val release = platform.acquireMulticastLock()
             try {
                 localNet?.let { n ->
                     val self = Ipv4.format(n.address)
@@ -98,6 +98,18 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
                     }) { dev -> withMain { addDevice(dev) } }
                 }
                 scanPhase = "Obteniendo nombres y MAC…"
+                if (sweep && range != null) {
+                    // Equipos que no responden a ping pero sí a ARP (muy útil en Windows/PC)
+                    val arp = withContext(Dispatchers.IO) { HostProbe.arpTable() }
+                    arp.forEach { (ip, mac) ->
+                        val v = Ipv4.parse(ip)
+                        if (v != null && range.contains(v) && v != range.network && v != range.broadcast) {
+                            val d = devices[ip]
+                            devices[ip] = d?.copy(mac = d.mac ?: mac, vendor = d.vendor ?: Oui.vendor(mac))
+                                ?: Device(ip, mac = mac, vendor = Oui.vendor(mac), sources = setOf("ARP"), isGateway = ip == local?.gateway)
+                        }
+                    }
+                }
                 LanScanner.enrich(devices.values.filter { !it.isSelf }) { d -> withMain { devices[d.ip] = d } }
                 scanPhase = "Completado: ${devices.size} equipos"
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -106,7 +118,7 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 scanError = e.message ?: e.toString()
             } finally {
-                lock?.release()
+                release?.invoke()
                 scanRunning = false
                 scanProgress = 1f
             }
@@ -120,10 +132,11 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun runDiscovery(localNet: Ipv4Network?) {
         val directed = localNet?.let { listOf(Ipv4.format(it.broadcast)) } ?: emptyList()
         val sightings = withContext(Dispatchers.IO) {
+            val iface = runCatching { platform.multicastInterface() }.getOrNull()
             val jobs = listOf(
-                async { runCatching { Discovery.mdns() }.getOrDefault(emptyList()) },
-                async { runCatching { Discovery.ssdp() }.getOrDefault(emptyList()) },
-                async { runCatching { Discovery.wsDiscovery() }.getOrDefault(emptyList()) },
+                async { runCatching { Discovery.mdns(iface) }.getOrDefault(emptyList()) },
+                async { runCatching { Discovery.ssdp(iface) }.getOrDefault(emptyList()) },
+                async { runCatching { Discovery.wsDiscovery(iface) }.getOrDefault(emptyList()) },
                 async { runCatching { Discovery.netBiosBroadcast(directed) }.getOrDefault(emptyList()) },
             )
             jobs.awaitAll().flatten()
@@ -146,17 +159,6 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
             latencyMs = existing.latencyMs ?: d.latencyMs,
             sources = existing.sources + d.sources,
         ) ?: d.copy(isGateway = gw)
-    }
-
-    private fun acquireMulticastLock(): WifiManager.MulticastLock? = try {
-        val wm = getApplication<Application>().applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
-        wm.createMulticastLock("ipcalc-discovery").apply {
-            setReferenceCounted(false)
-            acquire()
-        }
-    } catch (e: Exception) {
-        null
     }
 
     // ---------- escáner de puertos ----------
@@ -215,11 +217,11 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
         pingJob = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val p = ProcessBuilder("ping", "-c", count.toString(), "-W", "2", host.trim())
+                    val p = ProcessBuilder(platform.pingCommand(host.trim(), count))
                         .redirectErrorStream(true).start()
                     pingProcess = p
-                    p.inputStream.bufferedReader().useLines { lines ->
-                        lines.forEach { line -> withMain { pingLines.add(line) } }
+                    p.inputStream.bufferedReader(platform.consoleCharset).useLines { lines ->
+                        lines.filter { it.isNotBlank() }.forEach { line -> withMain { pingLines.add(line) } }
                     }
                     p.waitFor()
                 }
@@ -279,8 +281,8 @@ class NetworkViewModel(app: Application) : AndroidViewModel(app) {
         defaultJob?.cancel()
     }
 
-    override fun onCleared() {
+    fun dispose() {
         pingProcess?.destroy()
-        super.onCleared()
+        scanJob?.cancel(); portJob?.cancel(); pingJob?.cancel(); defaultJob?.cancel()
     }
 }

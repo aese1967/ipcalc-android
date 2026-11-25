@@ -1,6 +1,5 @@
 package com.aese.ipcalc.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,10 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -30,6 +29,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/** Muestra un aviso breve (Snackbar). */
+val LocalNotify = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 @Composable
 fun SectionCard(title: String? = null, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -51,13 +53,13 @@ fun SectionCard(title: String? = null, modifier: Modifier = Modifier, content: @
 @Composable
 fun ResultRow(label: String, value: String, mono: Boolean = true) {
     val clipboard = LocalClipboardManager.current
-    val ctx = LocalContext.current
+    val notify = LocalNotify.current
     Column(
         Modifier
             .fillMaxWidth()
             .clickable {
                 clipboard.setText(AnnotatedString(value))
-                Toast.makeText(ctx, "Copiado: $value", Toast.LENGTH_SHORT).show()
+                notify("Copiado: $value")
             }
             .padding(vertical = 4.dp)
     ) {

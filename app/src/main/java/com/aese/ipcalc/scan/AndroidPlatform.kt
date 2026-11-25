@@ -3,23 +3,34 @@ package com.aese.ipcalc.scan
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import com.aese.ipcalc.core.Ipv4
 import com.aese.ipcalc.core.Ipv4Network
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.NetworkInterface
 
-data class LocalNetwork(
-    val interfaceName: String?,
-    val transport: String,
-    val ipv4: Ipv4Network?,
-    val gateway: String?,
-    val dns: List<String>,
-    val ipv6: List<String>,
-)
+class AndroidPlatform(private val context: Context) : Platform {
 
-object NetInfo {
-    fun read(context: Context): LocalNetwork {
+    override fun acquireMulticastLock(): (() -> Unit)? = try {
+        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val lock = wm.createMulticastLock("ipcalc-discovery").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+        val release: () -> Unit = { lock.release() }
+        release
+    } catch (e: Exception) {
+        null
+    }
+
+    override fun readLocal(): LocalNetwork? = try {
+        read()
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun read(): LocalNetwork {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val net = cm.activeNetwork
         val lp = net?.let { cm.getLinkProperties(it) }

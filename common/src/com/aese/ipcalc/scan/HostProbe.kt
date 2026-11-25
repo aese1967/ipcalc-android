@@ -69,7 +69,12 @@ object HostProbe {
 
     /** Comprobación combinada de presencia. Devuelve latencia en ms o null. */
     fun isAlive(ip: String, timeoutMs: Int): Double? {
-        systemPing(ip, maxOf(1, timeoutMs / 1000))?.let { return it }
+        if (OS.isWindows) {
+            // En Windows Java usa ICMP real sin permisos de administrador
+            reachable(ip, timeoutMs)?.let { return it.toDouble() }
+        } else {
+            systemPing(ip, maxOf(1, timeoutMs / 1000))?.let { return it }
+        }
         for (port in DISCOVERY_PORTS.take(6)) {
             val r = tcp(ip, port, timeoutMs / 2)
             if (r.alive) return r.millis.toDouble()
@@ -109,6 +114,23 @@ object HostProbe {
      */
     fun arpTable(): Map<String, String> {
         val map = HashMap<String, String>()
+        if (OS.isWindows) {
+            try {
+                val p = ProcessBuilder("arp", "-a").redirectErrorStream(true).start()
+                val out = p.inputStream.bufferedReader(OS.consoleCharset).readText()
+                p.waitFor(5, TimeUnit.SECONDS)
+                val re = Regex("^\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+([0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5})")
+                out.lines().forEach { line ->
+                    re.find(line)?.let { m ->
+                        val mac = m.groupValues[2].replace('-', ':').uppercase()
+                        val first = m.groupValues[1].substringBefore('.').toInt()
+                        if (mac != "FF:FF:FF:FF:FF:FF" && first < 224) map[m.groupValues[1]] = mac
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            return map
+        }
         try {
             File("/proc/net/arp").readLines().drop(1).forEach { line ->
                 val cols = line.split(Regex("\\s+"))

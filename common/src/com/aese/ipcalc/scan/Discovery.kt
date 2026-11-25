@@ -6,6 +6,7 @@ import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
+import java.net.NetworkInterface
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.UUID
@@ -43,15 +44,20 @@ object Discovery {
 
     // ---------- mDNS / Bonjour ----------
 
-    fun mdns(listenMs: Int = 4000): List<Sighting> {
+    fun mdns(iface: NetworkInterface? = null, listenMs: Int = 4000): List<Sighting> {
         val out = mutableListOf<Sighting>()
         val group = InetAddress.getByName(MDNS_ADDR)
         val sock: DatagramSocket = try {
             MulticastSocket(null as java.net.SocketAddress?).apply {
                 reuseAddress = true
                 bind(InetSocketAddress(5353))
-                @Suppress("DEPRECATION")
-                joinGroup(group)
+                if (iface != null) {
+                    networkInterface = iface
+                    joinGroup(InetSocketAddress(group, 5353), iface)
+                } else {
+                    @Suppress("DEPRECATION")
+                    joinGroup(group)
+                }
                 timeToLive = 255
             }
         } catch (e: Exception) {
@@ -105,9 +111,14 @@ object Discovery {
         return out
     }
 
+    /** Socket UDP efímero; con [iface] fija la interfaz de salida del multicast. */
+    private fun senderSocket(iface: NetworkInterface?): DatagramSocket =
+        if (iface == null) DatagramSocket()
+        else MulticastSocket().apply { networkInterface = iface; timeToLive = 4 }
+
     // ---------- SSDP / UPnP ----------
 
-    fun ssdp(listenMs: Int = 3500, fetchDescriptions: Boolean = true): List<Sighting> {
+    fun ssdp(iface: NetworkInterface? = null, listenMs: Int = 3500, fetchDescriptions: Boolean = true): List<Sighting> {
         val msg = (
             "M-SEARCH * HTTP/1.1\r\n" +
                 "HOST: $SSDP_ADDR:1900\r\n" +
@@ -116,7 +127,7 @@ object Discovery {
                 "ST: ssdp:all\r\n\r\n"
             ).toByteArray()
         val found = LinkedHashMap<String, Pair<String?, String?>>() // ip -> (server, location)
-        DatagramSocket().use { s ->
+        senderSocket(iface).use { s ->
             s.soTimeout = 300
             s.broadcast = true
             val group = InetAddress.getByName(SSDP_ADDR)
@@ -171,14 +182,14 @@ object Discovery {
 
     // ---------- WS-Discovery (cámaras ONVIF, impresoras, Windows) ----------
 
-    fun wsDiscovery(listenMs: Int = 3000): List<Sighting> {
+    fun wsDiscovery(iface: NetworkInterface? = null, listenMs: Int = 3000): List<Sighting> {
         val id = UUID.randomUUID()
         val probe = """<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:wsd="http://schemas.xmlsoap.org/ws/2005/04/discovery">
 <soap:Header><wsa:To>urn:schemas-xmlsoap-org:ws:2005:04:discovery</wsa:To><wsa:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</wsa:Action><wsa:MessageID>urn:uuid:$id</wsa:MessageID></soap:Header>
 <soap:Body><wsd:Probe/></soap:Body></soap:Envelope>""".toByteArray()
         val out = LinkedHashMap<String, Sighting>()
-        DatagramSocket().use { s ->
+        senderSocket(iface).use { s ->
             s.soTimeout = 300
             val group = InetAddress.getByName(SSDP_ADDR)
             repeat(2) { s.send(DatagramPacket(probe, probe.size, group, 3702)) }

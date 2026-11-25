@@ -38,10 +38,10 @@ import androidx.compose.ui.unit.dp
 import com.aese.ipcalc.core.Ipv4
 import com.aese.ipcalc.scan.Device
 import com.aese.ipcalc.scan.LanScanner
-import com.aese.ipcalc.scan.NetworkViewModel
+import com.aese.ipcalc.scan.NetworkController
 
 @Composable
-fun ScannerScreen(vm: NetworkViewModel, onOpenPorts: (String) -> Unit, onCalc: (String) -> Unit) {
+fun ScannerScreen(vm: NetworkController, onOpenPorts: (String) -> Unit, onCalc: (String) -> Unit) {
     LaunchedEffect(Unit) { vm.refreshLocal() }
     var range by rememberSaveable { mutableStateOf("") }
     var sweep by rememberSaveable { mutableStateOf(true) }

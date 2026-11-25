@@ -17,15 +17,13 @@ android {
     }
 
     signingConfigs {
-        // Si existen los secretos de firma en CI se usan; si no, el release se firma con la clave debug.
+        // Clave fija de uso personal (la app no se distribuye), así las
+        // actualizaciones se instalan encima de la versión anterior.
         create("release") {
-            val ks = System.getenv("KEYSTORE_FILE")
-            if (ks != null && file(ks).exists()) {
-                storeFile = file(ks)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
-            }
+            storeFile = file("signing/ipcalc.jks")
+            storePassword = "ipcalcred"
+            keyAlias = "ipcalc"
+            keyPassword = "ipcalcred"
         }
     }
 
@@ -34,8 +32,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            val rel = signingConfigs.getByName("release")
-            signingConfig = if (rel.storeFile != null) rel else signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -45,6 +42,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+
+    // Código compartido con la versión de escritorio
+    sourceSets["main"].java.srcDir("../common/src")
+    sourceSets["test"].java.srcDir("../common/test")
 }
 
 dependencies {
